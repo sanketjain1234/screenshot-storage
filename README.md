@@ -1,98 +1,112 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Video Test Script Generator
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A NestJS API that accepts a video file or URL, sends it to the Gemini API, and generates a structured test script — with step numbers, actions, expected results, timestamps, and screenshot URLs for each step.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Prerequisites
 
-## Description
+- **Node.js** v18+
+- **ffmpeg** — bundled via `ffmpeg-static` and `@ffprobe-installer/ffprobe` (no manual install needed)
+- **Gemini API key** — obtain from [Google AI Studio](https://aistudio.google.com/app/apikey)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Setup
 
 ```bash
-$ npm install
+# 1. Install dependencies
+npm install
+
+# 2. Copy the example env file and fill in your values
+cp .env.example .env
 ```
 
-## Compile and run the project
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GEMINI_API_KEY` | **Yes** | — | Your Google Gemini API key |
+| `GEMINI_MODEL` | No | `gemini-2.5-flash` | Primary Gemini model used for step generation |
+| `GEMINI_FALLBACK_MODEL` | No | `gemini-2.5-flash-lite` | Fallback model if the primary returns 503 |
+| `PORT` | No | `3000` | Port the HTTP server listens on |
+| `MAX_FILE_SIZE_BYTES` | No | `209715200` | Max upload size in bytes (default: 200 MB) |
+| `TEMP_DIR` | No | `/tmp` | Directory for temporary video downloads |
+| `GEMINI_UPLOAD_SPEED_MBPS` | No | `1` | Estimated outbound bandwidth (Mbps) used to calculate Gemini polling wait time |
+| `GEMINI_PROCESSING_BUFFER_SECONDS` | No | `30` | Extra buffer seconds added on top of the upload wait before polling Gemini |
+
+> **Note:** `GEMINI_UPLOAD_SPEED_MBPS` and `GEMINI_PROCESSING_BUFFER_SECONDS` control how long the server waits before polling Gemini for file readiness. The formula is:
+> `initialWait = ceil(fileSizeBytes / (UPLOAD_SPEED_MBPS × 125000)) + PROCESSING_BUFFER_SECONDS`, capped at 180 s.
+
+### Minimal `.env`
+
+```env
+GEMINI_API_KEY=your_api_key_here
+```
+
+All other variables have sensible defaults.
+
+## Running the App
 
 ```bash
-# development
-$ npm run start
+# Development (watch mode)
+npm run start:dev
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+# Production
+npm run start:prod
 ```
 
-## Run tests
+The server starts at `http://localhost:3000` (or the configured `PORT`).  
+Swagger UI is available at `http://localhost:3000/api`.
+
+## API Overview
+
+### Jobs
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/jobs/upload` | Submit a video file (multipart/form-data) |
+| `POST` | `/jobs/url` | Submit a video by URL |
+| `GET` | `/jobs/:jobId` | Poll job status and retrieve results |
+
+Jobs are processed asynchronously. Poll `GET /jobs/:jobId` until `status` is `COMPLETED` or `FAILED`.
+
+**Supported video sources for URL jobs:**
+- Whitelisted domains: `drive.google.com`, `youtube.com`, `dropbox.com`, `dl.dropboxusercontent.com`, `s3.amazonaws.com`, `storage.googleapis.com`, `loom.com`, `vimeo.com`
+- Any domain with a direct video file extension (`.mp4`, `.mov`, `.webm`, `.avi`, `.mkv`)
+
+**Constraints:**
+- Max video duration: **240 seconds**
+- Max file size: **200 MB** (default)
+- Supported MIME types: `video/mp4`, `video/quicktime`, `video/webm`, `video/avi`, `video/x-msvideo`
+
+### Column Configs
+
+Optionally configure which columns appear in the generated steps, with custom labels and user-defined Gemini-powered fields.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/column-configs` | Create a column config |
+| `GET` | `/column-configs` | List all configs |
+| `GET` | `/column-configs/:id` | Get a config by ID |
+| `PATCH` | `/column-configs/:id` | Update a config |
+| `DELETE` | `/column-configs/:id` | Delete a config |
+
+Pass `?configId=<id>` to any job submission endpoint to apply a specific column config.
+
+### Screenshots
+
+Screenshot frames are extracted per step and served as static files:
+
+```
+GET /screenshots/:filename.png
+```
+
+## Running Tests
 
 ```bash
-# unit tests
-$ npm run test
+# Unit tests
+npm run test
 
-# e2e tests
-$ npm run test:e2e
+# Unit tests with coverage
+npm run test:cov
 
-# test coverage
-$ npm run test:cov
+# Watch mode
+npm run test:watch
 ```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
