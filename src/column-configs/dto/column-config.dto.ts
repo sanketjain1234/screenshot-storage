@@ -4,38 +4,9 @@ import { IsArray, IsEnum, IsOptional, IsString, Matches, MinLength, ValidateNest
 import {
   ColumnKey,
   ColumnEntry,
-  CustomColumnDef,
   COLUMN_REGISTRY,
   DEFAULT_COLUMN_KEYS,
 } from '../../common/columns/column-registry';
-
-export class CustomColumnDefDto implements CustomColumnDef {
-  @ApiProperty({
-    description: 'Unique identifier for this column. Must start with a letter and contain only letters, digits, or underscores. Must not collide with a built-in ColumnKey.',
-    example: 'automationHint',
-  })
-  @IsString()
-  @Matches(/^[a-zA-Z][a-zA-Z0-9_]*$/, {
-    message: 'key must start with a letter and contain only letters, digits, or underscores',
-  })
-  key: string;
-
-  @ApiProperty({
-    description: 'Display label shown in the column header.',
-    example: 'Automation Hint',
-  })
-  @IsString()
-  @MinLength(1)
-  label: string;
-
-  @ApiProperty({
-    description: 'Instruction sent to Gemini describing what to generate for this column. Be specific — vague descriptions produce vague output.',
-    example: 'Suggest the best locator strategy or automation approach for this step (e.g. data-testid, XPath, accessible role).',
-  })
-  @IsString()
-  @MinLength(10)
-  description: string;
-}
 
 export class ColumnEntryDto implements ColumnEntry {
   @ApiProperty({
@@ -54,6 +25,29 @@ export class ColumnEntryDto implements ColumnEntry {
   @IsString()
   @MinLength(1)
   label?: string;
+}
+
+export class CustomColumnDefDto {
+  @ApiProperty({
+    description: 'Unique key for this custom column. Must be camelCase and must not clash with any built-in ColumnKey.',
+    example: 'automationHint',
+  })
+  @IsString()
+  @Matches(/^[a-z][a-zA-Z0-9]*$/, { message: 'key must be camelCase (e.g. automationHint)' })
+  key: string;
+
+  @ApiProperty({ description: 'Display label for this column.', example: 'Automation Hint' })
+  @IsString()
+  @MinLength(1)
+  label: string;
+
+  @ApiProperty({
+    description: 'Instruction sent to Gemini describing what to generate for this column.',
+    example: 'Suggest the best locator strategy (e.g. data-testid, ARIA role) for automating this step.',
+  })
+  @IsString()
+  @MinLength(10)
+  description: string;
 }
 
 export class CreateColumnConfigDto {
@@ -81,11 +75,8 @@ export class CreateColumnConfigDto {
   columns: ColumnEntryDto[];
 
   @ApiPropertyOptional({
-    description: 'Optional list of fully custom columns not in the built-in registry. Each requires a key, label, and a Gemini instruction description.',
+    description: 'Optional user-defined columns Gemini will populate on each step.',
     type: [CustomColumnDefDto],
-    example: [
-      { key: 'automationHint', label: 'Automation Hint', description: 'Suggest the best locator strategy for automating this step.' },
-    ],
   })
   @IsOptional()
   @IsArray()
@@ -115,7 +106,7 @@ export class UpdateColumnConfigDto {
   columns?: ColumnEntryDto[];
 
   @ApiPropertyOptional({
-    description: 'Updated list of custom columns.',
+    description: 'Updated user-defined custom columns.',
     type: [CustomColumnDefDto],
   })
   @IsOptional()
@@ -152,11 +143,11 @@ export class ColumnConfigResponseDto {
   })
   columns: ColumnEntryDto[];
 
-  @ApiPropertyOptional({ type: [CustomColumnDefDto], description: 'Custom columns defined for this config' })
-  customColumns?: CustomColumnDefDto[];
-
   @ApiProperty({ type: [ColumnDefinitionInfoDto], description: 'Resolved column definitions for this config, with any custom labels applied' })
   resolvedColumns: ColumnDefinitionInfoDto[];
+
+  @ApiPropertyOptional({ type: [CustomColumnDefDto], description: 'User-defined custom columns for this config.' })
+  customColumns?: CustomColumnDefDto[];
 
   @ApiProperty({ example: '2024-01-15T10:30:00.000Z' })
   createdAt: Date;

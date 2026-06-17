@@ -16,7 +16,7 @@ let mockFileStream: EventEmitter & { close: jest.Mock; destroy: jest.Mock };
 
 jest.mock('fs', () => ({
   promises: {
-    stat: jest.fn().mockResolvedValue({ size: 1_048_576 }),
+    stat: jest.fn(),
     readFile: jest.fn(),
     unlink: jest.fn().mockResolvedValue(undefined),
   },
@@ -64,6 +64,11 @@ describe('VideoService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+
+    // Re-apply implementations cleared by clearAllMocks
+    const fsMock = require('fs');
+    fsMock.promises.stat.mockResolvedValue({ size: 1_048_576 });
+    fsMock.promises.unlink.mockResolvedValue(undefined);
 
     mockFileStream = Object.assign(new EventEmitter(), {
       close: jest.fn((cb: () => void) => cb()),
